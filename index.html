@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="DEDO"/>
+<meta name="theme-color" content="#000000"/>
+<link rel="manifest" href="./manifest.json"/>
+<title>DEDO · Sorteo táctil</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+<style>
+  :root{
+    --bg:#0a0a0f;
+    --g4:#888;
+    --safe-top:env(safe-area-inset-top,0px);
+    --safe-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+  html,body{width:100%;height:100%;background:var(--bg);overscroll-behavior:none;
+    touch-action:none;overflow:hidden;}
+  body{
+    font-family:'Space Mono',monospace;color:#fff;
+    height:100dvh;width:100vw;position:fixed;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ─── MENU / MODE SELECT ─── */
+  .menu{
+    position:fixed;inset:0;z-index:100;
+    background:radial-gradient(ellipse at 50% 30%, #16161f 0%, #0a0a0f 70%);
+    display:flex;flex-direction:column;
+    padding:calc(var(--safe-top) + 28px) 22px calc(var(--safe-bottom) + 20px);
+    overflow-y:auto;
+    transition:opacity 0.4s ease, transform 0.4s ease;
+  }
+  .menu.hide{opacity:0;transform:scale(1.04);pointer-events:none;}
+  .logo{
+    font-family:'Bebas Neue',sans-serif;font-size:54px;letter-spacing:14px;
+    text-align:center;line-height:0.9;margin-bottom:2px;
+    background:linear-gradient(90deg,#ff5e6c,#ffd93d,#6bcB77,#4d96ff,#c86bff);
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+    animation:hueShift 8s linear infinite;
+  }
+  @keyframes hueShift{0%{filter:hue-rotate(0deg);}100%{filter:hue-rotate(360deg);}}
+  .tagline{
+    text-align:center;font-size:9px;letter-spacing:0.28em;color:var(--g4);
+    text-transform:uppercase;margin-bottom:28px;
+  }
+  .modes{display:flex;flex-direction:column;gap:11px;flex:1;}
+  .mode{
+    position:relative;overflow:hidden;
+    display:flex;align-items:center;gap:15px;
+    padding:17px 18px;border-radius:18px;
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.09);
+    cursor:pointer;transition:transform 0.15s, background 0.15s, border-color 0.15s;
+  }
+  .mode:active{transform:scale(0.975);background:rgba(255,255,255,0.09);}
+  .mode-emoji{
+    width:46px;height:46px;flex-shrink:0;border-radius:13px;
+    display:flex;align-items:center;justify-content:center;font-size:24px;
+    background:rgba(255,255,255,0.06);
+  }
+  .mode-txt{flex:1;min-width:0;}
+  .mode-name{font-size:13px;font-weight:700;letter-spacing:0.06em;margin-bottom:3px;}
+  .mode-desc{font-size:9.5px;color:var(--g4);letter-spacing:0.03em;line-height:1.45;}
+  .mode-arrow{color:rgba(255,255,255,0.25);font-size:16px;}
+  /* accent strip per mode */
+  .mode::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;}
+  .mode.m-one::before{background:#ff5e6c;}
+  .mode.m-elim::before{background:#ff9f43;}
+  .mode.m-order::before{background:#ffd93d;}
+  .mode.m-teams::before{background:#6bcb77;}
+  .mode.m-roulette::before{background:#4d96ff;}
+  .mode.m-count::before{background:#c86bff;}
+
+  .menu-foot{
+    text-align:center;font-size:7.5px;letter-spacing:0.18em;color:#444;
+    margin-top:20px;line-height:1.9;
+  }
+
+  /* ─── GAME STAGE ─── */
+  .stage{
+    position:fixed;inset:0;z-index:50;display:none;
+    touch-action:none;
+  }
+  .stage.active{display:block;}
+  #fxcanvas{position:absolute;inset:0;z-index:1;display:block;}
+
+  .stage-hint{
+    position:absolute;top:calc(var(--safe-top) + 24px);left:0;right:0;z-index:5;
+    text-align:center;pointer-events:none;
+    font-size:12px;letter-spacing:0.14em;color:rgba(255,255,255,0.85);
+    text-transform:uppercase;font-weight:700;
+    transition:opacity 0.4s;
+    padding:0 30px;
+    text-shadow:0 2px 12px rgba(0,0,0,0.6);
+  }
+  .stage-sub{
+    position:absolute;top:calc(var(--safe-top) + 48px);left:0;right:0;z-index:5;
+    text-align:center;pointer-events:none;
+    font-size:9px;letter-spacing:0.16em;color:var(--g4);
+    transition:opacity 0.4s;
+  }
+
+  .back-btn{
+    position:absolute;top:calc(var(--safe-top) + 16px);left:16px;z-index:6;
+    width:38px;height:38px;border-radius:50%;
+    background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);
+    display:flex;align-items:center;justify-content:center;
+    font-size:18px;color:#fff;cursor:pointer;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  }
+  .back-btn:active{transform:scale(0.92);}
+
+  .result-banner{
+    position:absolute;bottom:calc(var(--safe-bottom) + 96px);left:0;right:0;z-index:6;
+    text-align:center;pointer-events:none;opacity:0;transform:translateY(20px);
+    transition:opacity 0.5s, transform 0.5s;
+  }
+  .result-banner.show{opacity:1;transform:translateY(0);}
+  .result-big{
+    font-family:'Bebas Neue',sans-serif;font-size:46px;letter-spacing:3px;line-height:1;
+    text-shadow:0 4px 24px rgba(0,0,0,0.5);
+  }
+  .result-small{font-size:10px;letter-spacing:0.2em;color:rgba(255,255,255,0.7);margin-top:6px;text-transform:uppercase;}
+
+  .replay-btn{
+    position:absolute;bottom:calc(var(--safe-bottom) + 24px);left:50%;transform:translateX(-50%);
+    z-index:7;opacity:0;pointer-events:none;
+    padding:14px 32px;border-radius:30px;
+    background:rgba(255,255,255,0.95);color:#000;border:none;
+    font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.16em;
+    cursor:pointer;transition:opacity 0.4s, transform 0.15s;
+  }
+  .replay-btn.show{opacity:1;pointer-events:auto;}
+  .replay-btn:active{transform:translateX(-50%) scale(0.95);}
+
+  /* teams config chips */
+  .teams-config{
+    position:absolute;top:calc(var(--safe-top) + 74px);left:0;right:0;z-index:6;
+    display:flex;justify-content:center;gap:8px;
+  }
+  .team-chip{
+    padding:8px 16px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:0.1em;
+    background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);
+    color:#fff;cursor:pointer;transition:all 0.15s;
+  }
+  .team-chip.sel{background:#fff;color:#000;}
+  .team-chip:active{transform:scale(0.94);}
+</style>
+</head>
+<body>
+
+<!-- MENU -->
+<div class="menu" id="menu">
+  <div class="logo">DEDO</div>
+  <div class="tagline">El sorteo más justo del mundo</div>
+  <div class="modes">
+    <div class="mode m-one" data-mode="one">
+      <div class="mode-emoji">👆</div>
+      <div class="mode-txt">
+        <div class="mode-name">ELEGIR UNO</div>
+        <div class="mode-desc">Todos ponen el dedo. La suerte elige a uno.</div>
+      </div>
+      <div class="mode-arrow">›</div>
+    </div>
+    <div class="mode m-elim" data-mode="elim">
+      <div class="mode-emoji">💥</div>
+      <div class="mode-txt">
+        <div class="mode-name">ELIMINACIÓN</div>
+        <div class="mode-desc">Se van apagando dedos uno a uno. El último sobrevive.</div>
+      </div>
+      <div class="mode-arrow">›</div>
+    </div>
+    <div class="mode m-order" data-mode="order">
+      <div class="mode-emoji">🔢</div>
+      <div class="mode-txt">
+        <div class="mode-name">ORDEN / TURNOS</div>
+        <div class="mode-desc">Ordena a todos: 1º, 2º, 3º... Ideal para turnos.</div>
+      </div>
+      <div class="mode-arrow">›</div>
+    </div>
+    <div class="mode m-teams" data-mode="teams">
+      <div class="mode-emoji">🎽</div>
+      <div class="mode-txt">
+        <div class="mode-name">HACER EQUIPOS</div>
+        <div class="mode-desc">Divide a todos en 2, 3 o 4 grupos al azar.</div>
+      </div>
+      <div class="mode-arrow">›</div>
+    </div>
+    <div class="mode m-roulette" data-mode="roulette">
+      <div class="mode-emoji">🎯</div>
+      <div class="mode-txt">
+        <div class="mode-name">RULETA</div>
+        <div class="mode-desc">Un haz de luz gira y se frena sobre el elegido.</div>
+      </div>
+      <div class="mode-arrow">›</div>
+    </div>
+    <div class="mode m-count" data-mode="count">
+      <div class="mode-emoji">⚡</div>
+      <div class="mode-txt">
+        <div class="mode-name">REFLEJOS</div>
+        <div class="mode-desc">Cuando la pantalla cambie, ¡el último en levantar el dedo pierde!</div>
+      </div>
+      <div class="mode-arrow">›</div>
+    </div>
+  </div>
+  <div class="menu-foot">DEDO · SORTEO TÁCTIL · DIGMARQUEZZ.ONLINE</div>
+</div>
+
+<!-- GAME STAGE -->
+<div class="stage" id="stage">
+  <canvas id="fxcanvas"></canvas>
+  <div class="back-btn" id="back-btn">‹</div>
+  <div class="stage-hint" id="stage-hint">PON LOS DEDOS</div>
+  <div class="stage-sub" id="stage-sub"></div>
+  <div class="teams-config" id="teams-config" style="display:none;">
+    <div class="team-chip sel" data-teams="2">2 EQUIPOS</div>
+    <div class="team-chip" data-teams="3">3 EQUIPOS</div>
+    <div class="team-chip" data-teams="4">4 EQUIPOS</div>
+  </div>
+  <div class="result-banner" id="result-banner">
+    <div class="result-big" id="result-big">—</div>
+    <div class="result-small" id="result-small"></div>
+  </div>
+  <button class="replay-btn" id="replay-btn">OTRA VEZ ↻</button>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ─── PALETTE ───
+const COLORS = [
+  {h:'#ff5e6c', name:'ROJO'},
+  {h:'#ffd93d', name:'AMARILLO'},
+  {h:'#6bcb77', name:'VERDE'},
+  {h:'#4d96ff', name:'AZUL'},
+  {h:'#c86bff', name:'MORADO'},
+  {h:'#ff9f43', name:'NARANJA'},
+  {h:'#43e8d8', name:'TURQUESA'},
+  {h:'#ff6fb5', name:'ROSA'},
+  {h:'#a0e548', name:'LIMA'},
+  {h:'#5e7cff', name:'ÍNDIGO'},
+];
+const TEAM_COLORS = [
+  {h:'#ff5e6c', name:'ROJO'},
+  {h:'#4d96ff', name:'AZUL'},
+  {h:'#6bcb77', name:'VERDE'},
+  {h:'#ffd93d', name:'AMARILLO'},
+];
+
+// ─── STATE ───
+let mode = null;
+let canvas, ctx, W, H, DPR;
+let fingers = new Map();   // id -> {x, y, color, idx, ...}
+let colorPool = [];
+let phase = 'waiting';     // waiting | countdown | revealing | done
+let countdownStart = 0;
+let raf = null;
+let teamCount = 2;
+let resultData = null;
+let animT = 0;             // global animation time
+let particles = [];        // confetti / burst
+
+const COUNTDOWN_MS = 3000; // time holding before draw
+
+// ─── CANVAS SETUP ───
+function setupCanvas(){
+  canvas = $('fxcanvas');
+  ctx = canvas.getContext('2d');
+  resize();
+  window.addEventListener('resize', resize);
+}
+function resize(){
+  DPR = Math.min(window.devicePixelRatio||1, 2.5);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W*DPR; canvas.height = H*DPR;
+  canvas.style.width = W+'px'; canvas.style.height = H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+
+// ─── MODE START ───
+function startMode(m){
+  mode = m;
+  $('menu').classList.add('hide');
+  setTimeout(()=>$('stage').classList.add('active'), 50);
+  resetRound();
+  $('teams-config').style.display = (m==='teams') ? 'flex' : 'none';
+  setHint();
+  if(!raf) loop();
+}
+function backToMenu(){
+  $('stage').classList.remove('active');
+  $('menu').classList.remove('hide');
+  phase='waiting';
+  fingers.clear();
+  particles=[];
+  resultData=null;
+  cancelAnimationFrame(raf); raf=null;
+}
+function resetRound(){
+  phase='waiting';
+  fingers.clear();
+  particles=[];
+  resultData=null;
+  colorPool = shuffle([...Array(COLORS.length).keys()]);
+  $('result-banner').classList.remove('show');
+  $('replay-btn').classList.remove('show');
+  setHint();
+  if(!raf) loop();
+}
+
+function setHint(){
+  const hints = {
+    one:    ['PON LOS DEDOS', 'La suerte elegirá a uno'],
+    elim:   ['PON LOS DEDOS', 'Se irán apagando hasta el último'],
+    order:  ['PON LOS DEDOS', 'Os pondré en orden'],
+    teams:  ['PON LOS DEDOS', 'Os dividiré en equipos'],
+    roulette:['PON LOS DEDOS', 'La ruleta girará'],
+    count:  ['PON LOS DEDOS', '¡Prepara tus reflejos!'],
+  };
+  const h = hints[mode] || ['PON LOS DEDOS',''];
+  $('stage-hint').textContent = h[0];
+  $('stage-sub').textContent = h[1];
+  $('stage-hint').style.opacity = '1';
+  $('stage-sub').style.opacity = '1';
+}
+
+// ─── TOUCH HANDLING ───
+function onTouchStart(e){
+  e.preventDefault();
+  if(phase==='revealing' || phase==='done') return;
+  for(const t of e.changedTouches){
+    addFinger(t.identifier, t.clientX, t.clientY);
+  }
+  evaluateStart();
+}
+function onTouchMove(e){
+  e.preventDefault();
+  for(const t of e.changedTouches){
+    const f = fingers.get(t.identifier);
+    if(f){ f.x = t.clientX; f.y = t.clientY; }
+  }
+}
+function onTouchEnd(e){
+  e.preventDefault();
+  for(const t of e.changedTouches){
+    handleLift(t.identifier);
+  }
+}
+function addFinger(id, x, y){
+  if(fingers.has(id)) return;
+  const cidx = colorPool[fingers.size % colorPool.length];
+  const col = (mode==='teams') ? null : COLORS[cidx];
+  fingers.set(id, {
+    x, y, color: col, cidx,
+    r: 0, targetR: 46,
+    born: performance.now(),
+    alive: true, team: null, rank: null,
+    pulse: Math.random()*Math.PI*2,
+  });
+}
+function handleLift(id){
+  // In "count/reflejos" mode, lifting is the action
+  if(mode==='count' && phase==='countdown'){
+    const f = fingers.get(id);
+    if(f && !f.lifted){
+      f.lifted = true;
+      f.liftTime = performance.now();
+    }
+    return;
+  }
+  // otherwise removing a finger cancels it (unless revealing/done)
+  if(phase==='waiting' || phase==='countdown'){
+    fingers.delete(id);
+    if(fingers.size < 2 && phase==='countdown'){
+      // not enough fingers, cancel countdown
+      phase='waiting';
+      setHint();
+    }
+  }
+}
+
+function evaluateStart(){
+  if(phase!=='waiting') return;
+  if(fingers.size >= 2){
+    phase='countdown';
+    countdownStart = performance.now();
+    $('stage-hint').style.opacity='0';
+    $('stage-sub').style.opacity='0';
+    if(navigator.vibrate) navigator.vibrate(20);
+  }
+}
+
+// ─── DRAW PICK LOGIC ───
+function doReveal(){
+  phase='revealing';
+  const ids = [...fingers.keys()];
+  if(mode==='one'){
+    const winner = ids[Math.floor(Math.random()*ids.length)];
+    resultData = {winner};
+    fingers.forEach((f,id)=>{ f.isWinner = (id===winner); });
+    animateWinner(winner);
+  } else if(mode==='elim'){
+    startElimination(ids);
+  } else if(mode==='order'){
+    startOrdering(ids);
+  } else if(mode==='teams'){
+    assignTeams(ids);
+  } else if(mode==='roulette'){
+    startRoulette(ids);
+  }
+}
+
+// ── ONE WINNER ──
+function animateWinner(winnerId){
+  if(navigator.vibrate) navigator.vibrate([40,30,120]);
+  fingers.forEach((f,id)=>{
+    if(id===winnerId){ f.targetR=90; f.winPulse=0; burst(f.x,f.y,f.color.h); }
+    else { f.fading=true; }
+  });
+  const f = fingers.get(winnerId);
+  showResult(f.color.name, 'ELEGIDO', f.color.h);
+  endReveal();
+}
+
+// ── ELIMINATION ──
+let elimTimer=null;
+function startElimination(ids){
+  const order = shuffle([...ids]);
+  // eliminate one every ~700ms, last remaining wins
+  let i=0;
+  $('stage-hint').textContent='';
+  function step(){
+    if(order.length<=1){
+      const winId = order[0];
+      const f = fingers.get(winId);
+      if(f){ f.targetR=90; burst(f.x,f.y,f.color.h); }
+      if(navigator.vibrate) navigator.vibrate([40,30,120]);
+      showResult(f? f.color.name : '—', 'SUPERVIVIENTE', f? f.color.h : '#fff');
+      endReveal();
+      return;
+    }
+    const victim = order.shift();
+    const f = fingers.get(victim);
+    if(f){ f.eliminated=true; f.fading=true; flash(f.x,f.y,f.color.h); }
+    if(navigator.vibrate) navigator.vibrate(30);
+    elimTimer=setTimeout(step, 750);
+  }
+  elimTimer=setTimeout(step, 600);
+}
+
+// ── ORDER ──
+function startOrdering(ids){
+  const order = shuffle([...ids]);
+  let rank=1, i=0;
+  $('stage-hint').textContent='';
+  function step(){
+    if(i>=order.length){
+      if(navigator.vibrate) navigator.vibrate([40,30,80]);
+      showResult('¡LISTO!', 'ORDEN ASIGNADO', '#ffd93d');
+      endReveal();
+      return;
+    }
+    const id=order[i];
+    const f=fingers.get(id);
+    if(f){ f.rank=rank; f.rankPop=0; pop(f.x,f.y,f.color.h); }
+    if(navigator.vibrate) navigator.vibrate(25);
+    rank++; i++;
+    setTimeout(step, 550);
+  }
+  setTimeout(step, 500);
+}
+
+// ── TEAMS ──
+function assignTeams(ids){
+  const shuffled = shuffle([...ids]);
+  shuffled.forEach((id,i)=>{
+    const f=fingers.get(id);
+    const team = i % teamCount;
+    f.team = team;
+    f.color = TEAM_COLORS[team];
+    f.teamPop=0;
+    setTimeout(()=>{ pop(f.x,f.y,f.color.h); if(navigator.vibrate)navigator.vibrate(20); }, i*120);
+  });
+  setTimeout(()=>{
+    if(navigator.vibrate) navigator.vibrate([40,30,80]);
+    showResult('¡EQUIPOS!', teamCount+' GRUPOS FORMADOS', '#6bcb77');
+    endReveal();
+  }, shuffled.length*120 + 300);
+}
+
+// ── ROULETTE ──
+let roulette=null;
+function startRoulette(ids){
+  $('stage-hint').textContent='';
+  const arr=[...ids];
+  // center of all fingers
+  let cx=0, cy=0;
+  arr.forEach(id=>{const f=fingers.get(id); cx+=f.x; cy+=f.y;});
+  cx/=arr.length; cy/=arr.length;
+  const winner = arr[Math.floor(Math.random()*arr.length)];
+  const wf = fingers.get(winner);
+  const targetAngle = Math.atan2(wf.y-cy, wf.x-cx);
+  roulette = {
+    cx, cy, angle:0, speed:0.5,
+    targetAngle, winner,
+    spins: 4 + Math.floor(Math.random()*3),
+    startT: performance.now(),
+    duration: 3200,
+  };
+}
+function updateRoulette(){
+  if(!roulette) return;
+  const t = (performance.now()-roulette.startT)/roulette.duration;
+  if(t>=1){
+    // landed
+    const wf = fingers.get(roulette.winner);
+    roulette.angle = Math.atan2(wf.y-roulette.cy, wf.x-roulette.cx);
+    if(wf){ wf.targetR=90; burst(wf.x,wf.y,wf.color.h); }
+    if(navigator.vibrate) navigator.vibrate([40,30,120]);
+    showResult(wf.color.name, 'ELEGIDO', wf.color.h);
+    roulette.done=true;
+    roulette=null;
+    endReveal();
+    return;
+  }
+  // ease out: total rotation = spins*2PI + (targetAngle - 0)
+  const ease = 1 - Math.pow(1-t, 3);
+  const total = roulette.spins*Math.PI*2 + (roulette.targetAngle + Math.PI*2);
+  roulette.angle = ease*total;
+  // vibrate ticks
+  if(Math.random()<0.15 && navigator.vibrate) navigator.vibrate(8);
+}
+
+// ── COUNT / REFLEJOS ──
+let countState=null;
+function startCountMode(){
+  // wait random delay then signal; last to lift loses
+  $('stage-hint').textContent='';
+  const delay = 2000 + Math.random()*4000;
+  countState = { signaled:false, signalTime:0, delay, startT:performance.now() };
+}
+function updateCount(){
+  if(!countState) return;
+  const elapsed = performance.now()-countState.startT;
+  if(!countState.signaled && elapsed>=countState.delay){
+    countState.signaled=true;
+    countState.signalTime=performance.now();
+    if(navigator.vibrate) navigator.vibrate([60,40,60,40,120]);
+  }
+  // if signaled, check lifts
+  if(countState.signaled){
+    const active=[...fingers.values()].filter(f=>!f.lifted);
+    if(active.length<=1 || allLiftedRecently()){
+      // the last one to lift (or remaining) loses
+      finishCount();
+    }
+  }
+}
+function allLiftedRecently(){
+  const arr=[...fingers.values()];
+  return arr.length>0 && arr.every(f=>f.lifted);
+}
+function finishCount(){
+  if(phase==='done') return;
+  phase='revealing';
+  const arr=[...fingers.entries()];
+  // loser = last to lift (max liftTime) or the one still down
+  let loserId=null, maxT=-1, stillDown=null;
+  arr.forEach(([id,f])=>{
+    if(!f.lifted) stillDown=id;
+    else if(f.liftTime>maxT){ maxT=f.liftTime; loserId=id; }
+  });
+  const lid = stillDown!==null ? stillDown : loserId;
+  const f = fingers.get(lid);
+  fingers.forEach((ff,id)=>{ if(id!==lid) ff.fading=true; });
+  if(f){ f.targetR=90; f.isLoser=true; burst(f.x,f.y,'#ff5e6c'); }
+  if(navigator.vibrate) navigator.vibrate([120,60,200]);
+  showResult(f?f.color.name:'—','¡EL MÁS LENTO PIERDE!', '#ff5e6c');
+  countState=null;
+  endReveal();
+}
+
+// ─── RESULT / END ───
+function showResult(big, small, color){
+  $('result-big').textContent = big;
+  $('result-big').style.color = color;
+  $('result-big').style.textShadow = `0 0 30px ${color}88, 0 4px 24px rgba(0,0,0,0.5)`;
+  $('result-small').textContent = small;
+  $('result-banner').classList.add('show');
+}
+function endReveal(){
+  phase='done';
+  setTimeout(()=>$('replay-btn').classList.add('show'), 700);
+}
+
+// ─── PARTICLES ───
+function burst(x,y,color){
+  for(let i=0;i<28;i++){
+    const a=Math.random()*Math.PI*2, sp=2+Math.random()*6;
+    particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
+      life:1,decay:0.012+Math.random()*0.02,color,size:2+Math.random()*4,type:'burst'});
+  }
+}
+function flash(x,y,color){
+  for(let i=0;i<10;i++){
+    const a=Math.random()*Math.PI*2, sp=1+Math.random()*3;
+    particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
+      life:1,decay:0.04,color,size:2+Math.random()*2,type:'burst'});
+  }
+}
+function pop(x,y,color){
+  particles.push({x,y,vx:0,vy:0,life:1,decay:0.03,color,size:10,type:'ring'});
+}
+
+// ─── MAIN LOOP ───
+function loop(){
+  raf = requestAnimationFrame(loop);
+  animT += 0.016;
+  ctx.clearRect(0,0,W,H);
+
+  // countdown logic
+  if(phase==='countdown'){
+    if(mode==='count'){
+      // count mode has its own flow: start its timer once
+      if(!countState) startCountMode();
+      updateCount();
+    } else {
+      const elapsed = performance.now()-countdownStart;
+      if(elapsed>=COUNTDOWN_MS){
+        doReveal();
+      }
+    }
+  }
+  if(phase==='revealing' && roulette) updateRoulette();
+
+  drawScene();
+  updateParticles();
+}
+
+function drawScene(){
+  const now = performance.now();
+
+  // countdown ring progress (for non-count modes)
+  let cdProgress = 0;
+  if(phase==='countdown' && mode!=='count'){
+    cdProgress = Math.min(1,(now-countdownStart)/COUNTDOWN_MS);
+  }
+
+  // count mode signal flash background
+  if(mode==='count' && countState && countState.signaled && phase==='countdown'){
+    const since=(now-countState.signalTime)/1000;
+    const a=Math.max(0, 0.5-since*0.5);
+    ctx.fillStyle=`rgba(255,80,90,${a})`;
+    ctx.fillRect(0,0,W,H);
+    // big LIFT text
+    ctx.fillStyle='#fff'; ctx.font='700 40px "Bebas Neue", sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('¡LEVANTA EL DEDO!', W/2, H/2);
+  } else if(mode==='count' && countState && !countState.signaled && phase==='countdown'){
+    ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.font='700 22px "Space Mono", monospace';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('ESPERA...', W/2, H/2);
+  }
+
+  // roulette beam
+  if(roulette){
+    const {cx,cy,angle}=roulette;
+    const len=Math.max(W,H);
+    const grad=ctx.createLinearGradient(cx,cy,cx+Math.cos(angle)*len,cy+Math.sin(angle)*len);
+    grad.addColorStop(0,'rgba(255,255,255,0.9)');
+    grad.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.save();
+    ctx.strokeStyle=grad; ctx.lineWidth=6; ctx.lineCap='round';
+    ctx.shadowColor='#fff'; ctx.shadowBlur=20;
+    ctx.beginPath(); ctx.moveTo(cx,cy);
+    ctx.lineTo(cx+Math.cos(angle)*len, cy+Math.sin(angle)*len);
+    ctx.stroke();
+    ctx.restore();
+    // center hub
+    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx,cy,5,0,Math.PI*2); ctx.fill();
+  }
+
+  // draw each finger
+  fingers.forEach((f,id)=>{
+    // radius easing
+    f.r += (f.targetR - f.r)*0.18;
+    f.pulse += 0.08;
+
+    if(f.fading){
+      f.fadeA = (f.fadeA===undefined?1:f.fadeA) - 0.04;
+      if(f.fadeA<0) f.fadeA=0;
+    }
+    const alpha = f.fading ? f.fadeA : 1;
+    if(alpha<=0 && f.eliminated) return;
+
+    const col = f.color ? f.color.h : '#ffffff';
+    const breathe = Math.sin(f.pulse)*3;
+    let r = Math.max(2, f.r + breathe);
+
+    // winner extra pulse
+    if(f.isWinner || f.isLoser){
+      f.winPulse=(f.winPulse||0)+0.1;
+      r += Math.sin(f.winPulse)*6;
+    }
+
+    drawFingerOrb(f.x, f.y, r, col, alpha, cdProgress, f);
+  });
+
+  // particles drawn in updateParticles
+}
+
+function drawFingerOrb(x,y,r,col,alpha,cdProgress,f){
+  if(r<=1 || alpha<=0) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  // outer glow
+  const glow = ctx.createRadialGradient(x,y,0,x,y,Math.max(1,r*1.8));
+  glow.addColorStop(0, col+'cc');
+  glow.addColorStop(0.5, col+'44');
+  glow.addColorStop(1, col+'00');
+  ctx.fillStyle=glow;
+  ctx.beginPath(); ctx.arc(x,y,r*1.8,0,Math.PI*2); ctx.fill();
+
+  // solid core
+  ctx.globalAlpha = alpha;
+  const core = ctx.createRadialGradient(x-r*0.3,y-r*0.3,r*0.1,x,y,r);
+  core.addColorStop(0, '#ffffff');
+  core.addColorStop(0.25, col);
+  core.addColorStop(1, col);
+  ctx.fillStyle=core;
+  ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+
+  // inner ring
+  ctx.globalAlpha = alpha*0.6;
+  ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.arc(x,y,r*0.78,0,Math.PI*2); ctx.stroke();
+
+  // countdown progress ring
+  if(cdProgress>0 && cdProgress<1 && !f.fading){
+    ctx.globalAlpha=alpha;
+    ctx.strokeStyle='rgba(255,255,255,0.95)';
+    ctx.lineWidth=4; ctx.lineCap='round';
+    ctx.beginPath();
+    ctx.arc(x,y,r+10,-Math.PI/2, -Math.PI/2 + cdProgress*Math.PI*2);
+    ctx.stroke();
+  }
+
+  // rank number (order mode)
+  if(f.rank){
+    f.rankPop=Math.min(1,(f.rankPop||0)+0.12);
+    ctx.globalAlpha=alpha;
+    ctx.fillStyle='#fff';
+    const fs = 34*f.rankPop;
+    ctx.font=`700 ${fs}px "Bebas Neue", sans-serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(f.rank, x, y);
+  }
+
+  // crown on winner
+  if(f.isWinner){
+    ctx.globalAlpha=alpha;
+    ctx.font='28px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('👑', x, y-r-18);
+  }
+
+  ctx.restore();
+}
+
+function updateParticles(){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    if(p.type==='ring'){
+      p.life-=p.decay;
+      const r=(1-p.life)*40+10;
+      ctx.save();
+      ctx.globalAlpha=p.life;
+      ctx.strokeStyle=p.color; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.stroke();
+      ctx.restore();
+    } else {
+      p.x+=p.vx; p.y+=p.vy; p.vy+=0.15; p.vx*=0.99; p.life-=p.decay;
+      ctx.save();
+      ctx.globalAlpha=Math.max(0,p.life);
+      ctx.fillStyle=p.color;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.size*p.life,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+    if(p.life<=0) particles.splice(i,1);
+  }
+}
+
+// ─── EVENTS ───
+function setup(){
+  setupCanvas();
+  document.querySelectorAll('.mode').forEach(el=>{
+    el.addEventListener('click',()=>startMode(el.dataset.mode));
+  });
+  $('back-btn').addEventListener('click',backToMenu);
+  $('replay-btn').addEventListener('click',resetRound);
+  document.querySelectorAll('.team-chip').forEach(c=>{
+    c.addEventListener('click',()=>{
+      document.querySelectorAll('.team-chip').forEach(x=>x.classList.remove('sel'));
+      c.classList.add('sel');
+      teamCount=parseInt(c.dataset.teams);
+    });
+  });
+
+  const stage=$('stage');
+  stage.addEventListener('touchstart',onTouchStart,{passive:false});
+  stage.addEventListener('touchmove',onTouchMove,{passive:false});
+  stage.addEventListener('touchend',onTouchEnd,{passive:false});
+  stage.addEventListener('touchcancel',onTouchEnd,{passive:false});
+
+  // mouse fallback for desktop testing
+  let mouseDown=false;
+  stage.addEventListener('mousedown',e=>{mouseDown=true;addFinger('mouse',e.clientX,e.clientY);evaluateStart();});
+  stage.addEventListener('mousemove',e=>{if(mouseDown){const f=fingers.get('mouse');if(f){f.x=e.clientX;f.y=e.clientY;}}});
+  stage.addEventListener('mouseup',()=>{mouseDown=false;handleLift('mouse');});
+
+  // prevent zoom gestures
+  document.addEventListener('gesturestart',e=>e.preventDefault());
+}
+
+function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
+
+setup();
+if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
+</script>
+</body>
+</html>
