@@ -90,7 +90,7 @@
     touch-action:none;
   }
   .stage.active{display:block;}
-  #fxcanvas{position:absolute;inset:0;z-index:1;display:block;}
+  #fxcanvas{position:absolute;inset:0;z-index:1;display:block;touch-action:none;}
 
   .stage-hint{
     position:absolute;top:calc(var(--safe-top) + 24px);left:0;right:0;z-index:5;
@@ -110,6 +110,7 @@
 
   .back-btn{
     position:absolute;top:calc(var(--safe-top) + 16px);left:16px;z-index:6;
+    touch-action:auto;
     width:38px;height:38px;border-radius:50%;
     background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);
     display:flex;align-items:center;justify-content:center;
@@ -333,15 +334,22 @@ function setHint(){
 }
 
 // ─── TOUCH HANDLING ───
+function isUIControl(el){
+  return el && el.closest && el.closest('.back-btn, .replay-btn, .team-chip, .teams-config');
+}
 function onTouchStart(e){
+  // let taps on UI buttons behave normally
+  if(isUIControl(e.target)) return;
   e.preventDefault();
   if(phase==='revealing' || phase==='done') return;
   for(const t of e.changedTouches){
+    if(isUIControl(t.target)) continue;
     addFinger(t.identifier, t.clientX, t.clientY);
   }
   evaluateStart();
 }
 function onTouchMove(e){
+  if(isUIControl(e.target)) return;
   e.preventDefault();
   for(const t of e.changedTouches){
     const f = fingers.get(t.identifier);
@@ -349,7 +357,6 @@ function onTouchMove(e){
   }
 }
 function onTouchEnd(e){
-  e.preventDefault();
   for(const t of e.changedTouches){
     handleLift(t.identifier);
   }
@@ -710,6 +717,7 @@ function drawScene(){
       f.winPulse=(f.winPulse||0)+0.1;
       r += Math.sin(f.winPulse)*6;
     }
+    r = Math.max(2, r);
 
     drawFingerOrb(f.x, f.y, r, col, alpha, cdProgress, f);
   });
@@ -780,18 +788,19 @@ function updateParticles(){
     const p=particles[i];
     if(p.type==='ring'){
       p.life-=p.decay;
-      const r=(1-p.life)*40+10;
+      const r=Math.max(0.5,(1-p.life)*40+10);
       ctx.save();
-      ctx.globalAlpha=p.life;
+      ctx.globalAlpha=Math.max(0,p.life);
       ctx.strokeStyle=p.color; ctx.lineWidth=3;
       ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.stroke();
       ctx.restore();
     } else {
       p.x+=p.vx; p.y+=p.vy; p.vy+=0.15; p.vx*=0.99; p.life-=p.decay;
+      const pr=Math.max(0.5, p.size*Math.max(0,p.life));
       ctx.save();
       ctx.globalAlpha=Math.max(0,p.life);
       ctx.fillStyle=p.color;
-      ctx.beginPath(); ctx.arc(p.x,p.y,p.size*p.life,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x,p.y,pr,0,Math.PI*2); ctx.fill();
       ctx.restore();
     }
     if(p.life<=0) particles.splice(i,1);
@@ -815,16 +824,19 @@ function setup(){
   });
 
   const stage=$('stage');
-  stage.addEventListener('touchstart',onTouchStart,{passive:false});
-  stage.addEventListener('touchmove',onTouchMove,{passive:false});
-  stage.addEventListener('touchend',onTouchEnd,{passive:false});
-  stage.addEventListener('touchcancel',onTouchEnd,{passive:false});
+  const cv=$('fxcanvas');
+  // Listen on the canvas (z-index below the buttons) so taps on the
+  // back / replay / team-chip controls reach the buttons normally.
+  cv.addEventListener('touchstart',onTouchStart,{passive:false});
+  cv.addEventListener('touchmove',onTouchMove,{passive:false});
+  cv.addEventListener('touchend',onTouchEnd,{passive:false});
+  cv.addEventListener('touchcancel',onTouchEnd,{passive:false});
 
   // mouse fallback for desktop testing
   let mouseDown=false;
-  stage.addEventListener('mousedown',e=>{mouseDown=true;addFinger('mouse',e.clientX,e.clientY);evaluateStart();});
-  stage.addEventListener('mousemove',e=>{if(mouseDown){const f=fingers.get('mouse');if(f){f.x=e.clientX;f.y=e.clientY;}}});
-  stage.addEventListener('mouseup',()=>{mouseDown=false;handleLift('mouse');});
+  cv.addEventListener('mousedown',e=>{mouseDown=true;addFinger('mouse',e.clientX,e.clientY);evaluateStart();});
+  cv.addEventListener('mousemove',e=>{if(mouseDown){const f=fingers.get('mouse');if(f){f.x=e.clientX;f.y=e.clientY;}}});
+  cv.addEventListener('mouseup',()=>{mouseDown=false;handleLift('mouse');});
 
   // prevent zoom gestures
   document.addEventListener('gesturestart',e=>e.preventDefault());
